@@ -1,16 +1,27 @@
 # Variant Impact Analyzer
 
-A lightweight Python command-line tool for translating coding DNA sequences (CDS) and classifying point mutations between a reference sequence and a sample sequence in FASTA format.
+A Python command-line tool for translating coding DNA sequences (CDS), comparing multiple samples against a reference sequence in FASTA format, and classifying point mutations along with their biochemical impact.
 
 ## Features
-- DNA to Protein Translation: Translates aligned coding sequences using the standard genetic code.
-- Variant Classification: Identifies codon changes and classifies mutations into Synonymous (Silent), Missense (evaluating side-chain chemical conservation), and Nonsense (premature stop codon).
+- Multi-sample FASTA comparison against a reference coding sequence.
+- DNA to protein translation using the standard genetic code.
+- Point mutation classification: Synonymous (silent), Missense (evaluating side-chain chemical conservation), and Nonsense (premature stop codon).
+- Command-line interface (CLI) built with argparse and structured CSV report export.
+- Unit test suite covering translation and variant classification logic.
 
 ## Project Structure
-- data/sample_sequences.fasta: Example reference and mutated CDS
-- src/analyzer.py: Core translation and variant classification logic
-- .gitignore: Ignored cache and local files
+- data/sample_sequences.fasta: Example reference and mutated CDS dataset
+- src/analyzer.py: Core CLI, translation, variant classification, and CSV export logic
+- tests/test_analyzer.py: Unit tests for sequence translation and mutation classification
+- .gitignore: Ignored cache, temporary CSV outputs, and local files
 - README.md: Project documentation
 
 ## Usage
-Run the analyzer on the included sample dataset with: python3 src/analyzer.py
+Run analysis on the default dataset:
+python3 src/analyzer.py
+
+Specify a custom input FASTA and export results to CSV:
+python3 src/analyzer.py -i data/sample_sequences.fasta -o variants_report.csv
+
+Run the unit test suite:
+python3 -m unittest discover -s tests -v

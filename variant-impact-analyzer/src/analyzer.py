@@ -1,3 +1,5 @@
+import argparse
+import csv
 import sys
 
 # Código genético estándar (ADN -> Aminoácido de 1 letra)
@@ -20,7 +22,7 @@ CODON_TABLE = {
     "TGC": "C", "TGT": "C", "TGA": "*", "TGG": "W",
 }
 
-# Clasificación bioquímica básica de cadenas laterales (grupos R)
+# Clasificación bioquímica de cadenas laterales (grupos R)
 AA_PROPERTIES = {
     "A": "Nonpolar", "V": "Nonpolar", "L": "Nonpolar", "I": "Nonpolar",
     "P": "Nonpolar", "F": "Nonpolar", "W": "Nonpolar", "M": "Nonpolar",
@@ -39,20 +41,24 @@ def parse_fasta(filepath):
     header = None
     seq_chunks = []
 
-    with open(filepath, "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith(">"):
-                if header:
-                    sequences.append((header, "".join(seq_chunks).upper()))
-                header = line[1:]
-                seq_chunks = []
-            else:
-                seq_chunks.append(line)
-        if header:
-            sequences.append((header, "".join(seq_chunks).upper()))
+    try:
+        with open(filepath, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith(">"):
+                    if header:
+                        sequences.append((header, "".join(seq_chunks).upper()))
+                    header = line[1:]
+                    seq_chunks = []
+                else:
+                    seq_chunks.append(line)
+            if header:
+                sequences.append((header, "".join(seq_chunks).upper()))
+    except FileNotFoundError:
+        print(f"[ERROR] No se encontró el archivo: {filepath}")
+        sys.exit(1)
 
     return sequences
 
@@ -66,68 +72,116 @@ def translate_dna(dna_seq):
     return "".join(protein)
 
 
-def analyze_variants(ref_name, ref_seq, sample_name, sample_seq):
-    """Compara referencia vs muestra codón por codón e imprime el reporte."""
+def classify_variant(ref_codon, sample_codon):
+    """Clasifica una mutación puntual entre dos codones y devuelve sus metadatos."""
+    ref_aa = CODON_TABLE.get(ref_codon, "X")
+    sample_aa = CODON_TABLE.get(sample_codon, "X")
+
+    if ref_aa == sample_aa:
+        return ref_aa, sample_aa, "SYNONYMOUS", "No amino acid change"
+    if sample_aa == "*":
+        return ref_aa, sample_aa, "NONSENSE", "Premature STOP codon introduced"
+
+    ref_prop = AA_PROPERTIES.get(ref_aa, "Unknown")
+    sample_prop = AA_PROPERTIES.get(sample_aa, "Unknown")
+    if ref_prop == sample_prop:
+        impact = f"Conservative ({ref_prop} -> {sample_prop})"
+    else:
+        impact = f"Non-conservative ({ref_prop} -> {sample_prop})"
+
+    return ref_aa, sample_aa, "MISSENSE", impact
+
+
+def analyze_sample(ref_name, ref_seq, sample_name, sample_seq):
+    """Compara una muestra contra la referencia y devuelve una lista de diccionarios con variantes."""
     if len(ref_seq) != len(sample_seq):
-        print(f"[ERROR] Longitudes distintas: Ref ({len(ref_seq)} bp) vs Sample ({len(sample_seq)} bp).")
-        print("Este analizador MVP requiere secuencias codificantes alineadas de igual longitud.")
-        sys.exit(1)
+        print(f"[WARNING] Saltando '{sample_name}': longitud distinta ({len(sample_seq)} bp vs {len(ref_seq)} bp).")
+        return []
 
     ref_prot = translate_dna(ref_seq)
     sample_prot = translate_dna(sample_seq)
 
-    print("=" * 65)
-    print(f"VARIANT IMPACT REPORT: {sample_name} vs {ref_name}")
-    print("=" * 65)
+    print("=" * 70)
+    print(f"SAMPLE: {sample_name} (vs {ref_name})")
     print(f"Ref Protein   : {ref_prot}")
     print(f"Sample Protein: {sample_prot}")
-    print("-" * 65)
+    print("-" * 70)
 
-    variants_found = 0
+    detected_variants = []
 
     for codon_idx in range(0, len(ref_seq), 3):
         ref_codon = ref_seq[codon_idx:codon_idx+3]
         sample_codon = sample_seq[codon_idx:codon_idx+3]
 
         if ref_codon != sample_codon:
-            variants_found += 1
             aa_pos = (codon_idx // 3) + 1
-            ref_aa = CODON_TABLE.get(ref_codon, "X")
-            sample_aa = CODON_TABLE.get(sample_codon, "X")
+            ref_aa, sample_aa, v_type, impact = classify_variant(ref_codon, sample_codon)
 
-            if ref_aa == sample_aa:
-                v_type = "SYNONYMOUS (Silent)"
-                impact = "No amino acid change"
-            elif sample_aa == "*":
-                v_type = "NONSENSE (Truncating)"
-                impact = "Premature STOP codon introduced!"
-            else:
-                v_type = "MISSENSE"
-                ref_prop = AA_PROPERTIES.get(ref_aa, "Unknown")
-                sample_prop = AA_PROPERTIES.get(sample_aa, "Unknown")
-                if ref_prop == sample_prop:
-                    impact = f"Conservative ({ref_prop} -> {sample_prop})"
-                else:
-                    impact = f"Non-conservative ({ref_prop} -> {sample_prop})"
+            variant_record = {
+                "reference": ref_name,
+                "sample": sample_name,
+                "aa_position": aa_pos,
+                "ref_codon": ref_codon,
+                "sample_codon": sample_codon,
+                "ref_aa": ref_aa,
+                "sample_aa": sample_aa,
+                "mutation_type": v_type,
+                "biochemical_impact": impact
+            }
+            detected_variants.append(variant_record)
 
-            print(f"Posición AA {aa_pos:>2} | Codón: {ref_codon} -> {sample_codon} | AA: {ref_aa} -> {sample_aa}")
-            print(f"   Tipo   : {v_type}")
-            print(f"   Impacto: {impact}\n")
+            print(f"  Posición AA {aa_pos:>2} | {ref_codon} -> {sample_codon} | AA: {ref_aa} -> {sample_aa} | [{v_type}] {impact}")
 
-    if variants_found == 0:
-        print("No se detectaron variantes entre las secuencias.")
-    print("=" * 65)
+    if not detected_variants:
+        print("  Sin variantes detectadas.")
+    print()
+
+    return detected_variants
 
 
-if __name__ == "__main__":
-    fasta_path = "data/sample_sequences.fasta"
-    records = parse_fasta(fasta_path)
+def export_to_csv(variants, output_path):
+    """Exporta la lista de variantes detectadas a un archivo CSV."""
+    fieldnames = [
+        "reference", "sample", "aa_position", "ref_codon",
+        "sample_codon", "ref_aa", "sample_aa", "mutation_type", "biochemical_impact"
+    ]
+    with open(output_path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(variants)
+    print(f"[OK] Reporte exportado exitosamente a: {output_path}")
 
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Traduce secuencias codificantes (FASTA) y clasifica mutaciones puntuales."
+    )
+    parser.add_argument(
+        "-i", "--input",
+        default="data/sample_sequences.fasta",
+        help="Ruta al archivo FASTA de entrada (por defecto: data/sample_sequences.fasta)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        help="Ruta opcional para exportar los resultados en formato CSV (ej. results.csv)"
+    )
+    args = parser.parse_args()
+
+    records = parse_fasta(args.input)
     if len(records) < 2:
-        print("[ERROR] El archivo FASTA debe contener al menos 2 secuencias (Referencia y Muestra).")
+        print("[ERROR] El archivo FASTA debe contener al menos 2 secuencias (Referencia y al menos 1 Muestra).")
         sys.exit(1)
 
     ref_header, ref_dna = records[0]
-    sample_header, sample_dna = records[1]
+    all_variants = []
 
-    analyze_variants(ref_header, ref_dna, sample_header, sample_dna)
+    for sample_header, sample_dna in records[1:]:
+        sample_variants = analyze_sample(ref_header, ref_dna, sample_header, sample_dna)
+        all_variants.extend(sample_variants)
+
+    if args.output:
+        export_to_csv(all_variants, args.output)
+
+
+if __name__ == "__main__":
+    main()

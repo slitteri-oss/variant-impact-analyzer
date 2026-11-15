@@ -1,4 +1,6 @@
 >Reference_Gene_X
 ATGGCTTTCGCAGGCTGGTAA
->Sample_Mutant_1
+>Sample_Mutant_1_Mixed
 ATGGCTTTTGCACGGTGGTGA
+>Sample_Mutant_2_Nonsense
+ATGGCTTTCGCAGGCTAGTAA
